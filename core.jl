@@ -12,6 +12,8 @@ struct lattice
     λ::Float64
     Tmatrix::Matrix{Int}
     expmΔτT::UDT{Float64}
+    expmhΔτT::UDT{Float64}
+    exphΔτT::UDT{Float64}
 
     function lattice(L::Int,U::Float64,μ::Float64,Temp::Float64,Nt::Int)
         Ns = L^3
@@ -19,7 +21,9 @@ struct lattice
         λ = acosh(exp(abs(U)*Δτ/2))
         Tmatrix = initT(L)
         expmΔτT = udt(exp(-Δτ * Tmatrix))
-        new(L,Ns,U,μ,Temp,Nt,Δτ,λ,Tmatrix,expmΔτT)
+        exphmΔτT = udt(exp(-Δτ/2 * Tmatrix))
+        exphΔτT = udt(exp(Δτ/2 * Tmatrix))
+        new(L,Ns,U,μ,Temp,Nt,Δτ,λ,Tmatrix,expmΔτT,exphmΔτT,exphΔτT)
     end
 end
 
@@ -43,6 +47,15 @@ function eTeV(eT::UDT,eV::Vector{Float64})
     UDT(eT.U,eT.D .* eV, Diagonal(inveV) * eT.T * Diagonal(eV))
 end
 
+function greens(R::UDT,L::UDT)
+    DRmaxinv = Diagonal(1 ./ max.(R.D,1))
+	DLmaxinv = Diagonal(1 ./ max.(L.D,1))
+	DRmin = Diagonal(min.(R.D,1))
+	DLmin = Diagonal(min.(L.D,1))
+	inv(L.T) * DLmaxinv * inv(DRmaxinv * inv(L.T * R.U) * DLmaxinv +
+		DRmin * R.T * L.U * DLmin) * DRmaxinv * inv(R.U)
+end
+
 function initMultBudt(l::lattice,AuxField::Matrix{Int})
     MultBup = Vector{UDT}(undef,l.Nt+2)
     MultBdn = Vector{UDT}(undef,l.Nt+2)
@@ -58,7 +71,7 @@ function initMultBudt(l::lattice,AuxField::Matrix{Int})
     MultBup, MultBdn
 end
 
-function flipslice!(slice::Int,l::lattice,AuxField::Matrix{Int},Gup::Matrix{Float64},Gdn::Matrix{Float64})
+function flip!(slice::Int,l::lattice,AuxField::Matrix{Int},Gup::Matrix{Float64},Gdn::Matrix{Float64})
     γup = exp.(-2*l.λ*AuxField[:,slice]).-1
     γdn = exp.( 2*l.λ*AuxField[:,slice]).-1
     Rup = 0
@@ -67,7 +80,8 @@ function flipslice!(slice::Int,l::lattice,AuxField::Matrix{Int},Gup::Matrix{Floa
     @inbounds for site = 1:l.Ns
         Rup = 1+(1-Gup[site,site])*γup[site]
         Rdn = 1+(1-Gdn[site,site])*γdn[site]
-        if rand() < min(1,Rup * Rdn)
+        P = Rup * Rdn
+        if P > 1 || rand() < P
             AuxField[site,slice] *= -1
             updateg!(site,γup[site]/Rup,Gup,gtmp)
             updateg!(site,γdn[site]/Rdn,Gdn,gtmp)
@@ -83,36 +97,38 @@ function updateg!(site::Int,prop::Float64,g::Matrix{Float64},gtmp::Array{Float64
     nothing
 end
 
-function updateRight!(slice::Int,l::lattice,AuxField::Matrix{Int},
+function updateBτ0!(slice::Int,l::lattice,AuxField::Matrix{Int},
     MultBup::Vector{UDT},MultBdn::Vector{UDT},gup::Matrix{Float64},gdn::Matrix{Float64})
     MultBup[l.Nt-slice+2] = udtMult(eTeV(l.expmΔτT,
         exp.(AuxField[:,slice]*l.λ .+ (l.μ - l.U/2)*l.Δτ)), MultBup[l.Nt-slice+3])
-    gup[:,:] = invoneplus(udtMult(MultBup[l.Nt-slice+2],MultBup[l.Nt-slice+1]))
+    gup[:,:] = greens(MultBup[l.Nt-slice+2],MultBup[l.Nt-slice+1])
     MultBdn[l.Nt-slice+2] = udtMult(eTeV(l.expmΔτT,
         exp.(-AuxField[:,slice]*l.λ .+ (l.μ - l.U/2)*l.Δτ)), MultBdn[l.Nt-slice+3])
-    gdn[:,:] = invoneplus(udtMult(MultBdn[l.Nt-slice+2],MultBdn[l.Nt-slice+1]))
+    gdn[:,:] = greens(MultBdn[l.Nt-slice+2],MultBdn[l.Nt-slice+1])
     nothing
 end
 
-function updateLeft!(slice::Int,l::lattice,AuxField::Matrix{Int},
+function updateBβτ!(slice::Int,l::lattice,AuxField::Matrix{Int},
     MultBup::Vector{UDT},MultBdn::Vector{UDT},gup::Matrix{Float64},gdn::Matrix{Float64})
     MultBup[l.Nt-slice+2] = udtMult(MultBup[l.Nt-slice+1],
         eTeV(l.expmΔτT, exp.(AuxField[:,slice]*l.λ .+ (l.μ - l.U/2)*l.Δτ)))
-    gup[:,:] = invoneplus(udtMult(MultBup[l.Nt-slice+2],MultBup[l.Nt-slice+3]))
+    Buptmp = eTeV(l.expmΔτT, exp.(AuxField[:,slice-1]*l.λ .+ (l.μ - l.U/2)*l.Δτ))
+    gup[:,:] = greens(MultBup[l.Nt-slice+4],udtMult(MultBup[l.Nt-slice+2],Buptmp))
     MultBdn[l.Nt-slice+2] = udtMult(MultBdn[l.Nt-slice+1],
-        eTeV(l.expmΔτT,exp.(-AuxField[:,slice]*l.λ .+ (l.μ - l.U/2)*l.Δτ)))
-    gdn[:,:] = invoneplus(udtMult(MultBdn[l.Nt-slice+2],MultBdn[l.Nt-slice+3]))
+        eTeV(l.expmΔτT, exp.(-AuxField[:,slice]*l.λ .+ (l.μ - l.U/2)*l.Δτ)))
+    Bdntmp = eTeV(l.expmΔτT, exp.(-AuxField[:,slice-1]*l.λ .+ (l.μ - l.U/2)*l.Δτ))
+    gdn[:,:] = greens(MultBdn[l.Nt-slice+4],udtMult(MultBdn[l.Nt-slice+2],Bdntmp))
     nothing
 end
 
 function sweep!(l::lattice,AuxField::Matrix{Int},Gup::Matrix{Float64},Gdn::Matrix{Float64},
     MultBup::Vector{UDT},MultBdn::Vector{UDT})
-    for slice = 1:l.Nt
-        flipslice!(slice,l,AuxField,Gup,Gdn)
-        updateRight!(slice,l,AuxField,MultBup,MultBdn,Gup,Gdn)
+    for slice = 1:l.Nt-1
+        flip!(slice,l,AuxField,Gup,Gdn)
+        updateBτ0!(slice,l,AuxField,MultBup,MultBdn,Gup,Gdn)
     end
-    for slice = l.Nt:-1:1
-        flipslice!(slice,l,AuxField,Gup,Gdn)
-        updateLeft!(slice,l,AuxField,MultBup,MultBdn,Gup,Gdn)
+    for slice = l.Nt:-1:2
+        flip!(slice,l,AuxField,Gup,Gdn)
+        updateBβτ!(slice,l,AuxField,MultBup,MultBdn,Gup,Gdn)
     end
 end

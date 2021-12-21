@@ -67,12 +67,12 @@ function nnspincorr(gup::Matrix{Float64},gdn::Matrix{Float64},
     avgP = P/6/Ns
 end
 
-function saveallobser!(gup::Matrix{Float64},gdn::Matrix{Float64},l::lattice,result::Array{Float64})
-    result[1] = occupy(gup,gdn,l.Ns)
-    result[2] = doubleoccupy(gup,gdn,l.Ns)
+function saveallobser!(gup::Matrix{Float64},gdn::Matrix{Float64},l::lattice,result::Array{Float64},sweep::Int)
+    result[sweep,1] = occupy(gup,gdn,l.Ns)
+    result[sweep,2] = doubleoccupy(gup,gdn,l.Ns)
     gtildeup = Diagonal(Vector(ones(l.Ns))) - transpose(gup)
     gtildedn = Diagonal(Vector(ones(l.Ns))) - transpose(gdn)
-    result[3] = kinetic(gtildeup,gtildedn,l.Ns,l.Tmatrix)
-    result[4] = nnspincorr(gup,gdn,gtildeup,gtildedn,l.Tmatrix)
-    result[5] = Sπ(gup,gdn,gtildeup,gtildedn,l)
+    result[sweep,3] = kinetic(gtildeup,gtildedn,l.Ns,l.Tmatrix)
+    result[sweep,4] = nnspincorr(gup,gdn,gtildeup,gtildedn,l.Tmatrix)
+    result[sweep,5] = Sπ(gup,gdn,gtildeup,gtildedn,l)
 end
