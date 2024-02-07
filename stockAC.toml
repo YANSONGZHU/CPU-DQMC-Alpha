@@ -1,0 +1,23 @@
+[BASE]
+finput = ""
+solver = "StochAC"
+ktype  = "fermi"
+mtype  = "flat"
+grid   = "ftime"
+mesh   = "linear"
+ngrid  = 80
+nmesh  = 201
+wmax   = 20.0
+wmin   = -20.0
+beta   = 1.0
+offdiag = false
+
+[StochAC]
+nfine = 10000
+ngamm = 512
+nwarm = 4000
+nstep = 10000000
+ndump = 40000
+nalph = 40
+alpha = 1.00
+ratio = 1.20

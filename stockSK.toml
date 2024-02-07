@@ -1,0 +1,24 @@
+[BASE]
+finput = ""
+solver = "StochSK"
+ktype  = "fermi"
+mtype  = "flat"
+grid   = "ftime"
+mesh   = "linear"
+ngrid  = 51
+nmesh  = 201
+wmax   = 20.0
+wmin   = -20.0
+beta   = 1.0
+offdiag = false
+
+[StochSK]
+method = "chi2min"
+nfine  = 40000
+ngamm  = 1000
+nwarm  = 1000
+nstep  = 20000
+ndump  = 200
+retry  = 10
+theta  = 1e+6
+ratio  = 0.90

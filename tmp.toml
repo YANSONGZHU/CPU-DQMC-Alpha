@@ -1,0 +1,21 @@
+[BASE]
+finput = ""
+solver = "MaxEnt"
+ktype  = "fermi"
+mtype  = "gauss"
+grid   = "ftime"
+mesh   = "linear"
+ngrid  = 80
+nmesh  = 201
+wmax   = 20.0
+wmin   = -20.0
+beta   = 1.0
+offdiag = false
+
+[MaxEnt]
+method = "chi2kink"
+stype  = "sj"
+nalph  = 12
+alpha  = 1e9
+ratio  = 10.0
+blur   = -1.0
