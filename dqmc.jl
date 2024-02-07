@@ -1,48 +1,54 @@
 include("core.jl")
 include("measure.jl")
-using JLD2
 using DelimitedFiles
 using ProgressBars
 using Printf
+using Statistics
+using JLD2
 
-function main(L::Int,U::Float64,Temp::Float64,Nwarm::Int,Nsweep::Int)
-    println("DQMC START!")
-    @printf("L = %d U  = %g Temp = %g\n",L,U,Temp)
-    resultfile = "DATA/L " * string(L) * " U " * string(U) * " Temp " * string(Temp) * ".dat"
-    AuxFieldfile = "AuxField/L " * string(L) * " U " * string(U) * " Temp " * string(Temp) * ".jld2"
-    result = zeros(Nsweep,5)
-    μ = U / 2
-    β = 1/Temp
-    Nt = Int(round(β/0.05))
-    @printf("Choosing Nt = %d\n",Nt)
-    l = lattice(L,U,μ,Temp,Nt)
-    println("Initializing ...")
+function main(L::Int,U::Real,Temp::Real,μ::Real,Ntherm::Int,Nsweep::Int)
+    Nt = 81
+    Nwrap = 9
+    l = lattice(L,U,μ,Temp,Nt,Nwrap,dim=3)
+    result = zeros(Nsweep,2)
+    MultB = Vector{UDT}(undef, l.NumB)
     AuxField = rand([1,-1],l.Ns,Nt)
-    MultBup, MultBdn = initMultBudt(l,AuxField)
-    Gup = greens(MultBup[Nt+1],MultBup[Nt+2])
-    Gdn = greens(MultBdn[Nt+1],MultBdn[Nt+2])
-    println("Warming ...")
-    for warm in ProgressBar(1:Nwarm)
-        sweep!(l,AuxField,Gup,Gdn,MultBup,MultBdn)
+    tmp = cache(l,AuxField)
+    calcuMultBudt!(MultB,l,tmp)
+    G = greens(MultB[l.NumB])
+    unequal_green = zeros(Float64,l.Nt,l.Ns,l.Ns)
+    for therm = ProgressBar(1:Ntherm)
+        sweep!(l,AuxField,G,MultB,tmp)
     end
-    println("Measure ...")
     for sweep = ProgressBar(1:Nsweep)
-        sweep!(l,AuxField,Gup,Gdn,MultBup,MultBdn)
-        saveallobser!(Gup,Gdn,l,result,sweep)
+        sweep_forward!(l,AuxField,G,MultB,tmp)
+        result[sweep,1] = occupy(G,l.Ns)
+        result[sweep,2] = doubleoccupy(G,l.Ns)
+        accum_unequal_green!(l,unequal_green,G,MultB,tmp)
+        calcuMultBudt!(MultB,l,tmp)
     end
-    io = open(resultfile, "a")
-    writedlm(io, result, '\t')
-    close(io)
-    jldsave(AuxFieldfile;AuxField)
+    println(sum(result[:,1])/Nsweep)
+    println(sum(result[:,2])/Nsweep)
+    println(2*sum(result[:,2])/sum(result[:,1]))
+    unequal_green = unequal_green ./ Nsweep
+    unequal_green_file = "L" * string(L) * " U" * string(U) * " T" * string(Temp) * ".jld2"
+    jldsave(unequal_green_file;unequal_green)
 end
 
-L = 4
-Nwarm = 2000
-Utmp = [6.0 7.0 8.0 9.0 10.0 11.0 12.0]
-Ttmp = [0.32 0.36 0.40 0.44 0.48 0.54 0.60 0.72 0.84]
-for U = 1:7
-    for Temp = 1:9
-        Nsweep = 24000-2000*(7-U)-1000*(Temp-1)
-        main(L,Utmp[U],Ttmp[Temp],Int(Nwarm),Int(Nsweep))
-    end
+L = 6
+# Ntherm = [6000 8000 10000 12000 14000 16000]
+# U = -8.0
+# T = [1.0    0.8    1.2    1.6    0.6    2.0]
+# μ = [-0.371 -0.331 -0.413 -0.502 -0.292 -0.637]
+# U = -4.0
+# T = [2.0 1.6 1.2 1.0 0.8 0.6]
+# μ = [-0.76 -0.65 -0.55 -0.5 -0.45 -0.41]
+# Nsweep = [8000 10000 12000 14000 16000 18000]
+U = [-4.0 -6.0 -6.0 -6.0 -6.0 -6.0 -6.0]
+T = [0.6 2.0 1.6 1.2 1.0 0.8 0.6]
+μ = [-0.41 -0.69 -0.56 -0.47 -0.42 -0.38 -0.34]
+Ntherm = [16000 6000 8000 10000 12000 14000 16000]
+Nsweep = [18000 8000 10000 12000 14000 16000 18000]
+for i = 1:7
+    main(L,U[i],T[i],μ[i],Ntherm[i],Nsweep[i])
 end

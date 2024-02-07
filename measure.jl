@@ -1,9 +1,9 @@
-function occupy(gup::Matrix{Float64},gdn::Matrix{Float64},Ns::Int)
-    occupy = 2 - (sum(diag(gup)) + sum(diag(gdn)))/Ns
+function occupy(g::Matrix{Float64},Ns::Int)
+    occupy = 2 - (2*sum(diag(g)))/Ns
 end
 
-function doubleoccupy(gup::Matrix{Float64},gdn::Matrix{Float64},Ns::Int)
-    doubleoccupy = sum((1 .- diag(gup)).*(1 .- diag(gdn)))/Ns
+function doubleoccupy(g::Matrix{Float64},Ns::Int)
+    doubleoccupy = sum((1 .- diag(g)).^2)/Ns
 end
 
 function kinetic(gtildeup::Matrix{Float64},gtildedn::Matrix{Float64},Ns::Int,Tmatrix::Matrix{Int})
@@ -68,8 +68,8 @@ function nnspincorr(gup::Matrix{Float64},gdn::Matrix{Float64},
 end
 
 function saveallobser!(gup::Matrix{Float64},gdn::Matrix{Float64},l::lattice,result::Array{Float64},sweep::Int)
-    result[sweep,1] = occupy(gup,gdn,l.Ns)
-    result[sweep,2] = doubleoccupy(gup,gdn,l.Ns)
+    result[sweep,1] = occupy(g,l.Ns)
+    result[sweep,2] = doubleoccupy(g,l.Ns)
     gtildeup = Diagonal(Vector(ones(l.Ns))) - transpose(gup)
     gtildedn = Diagonal(Vector(ones(l.Ns))) - transpose(gdn)
     result[sweep,3] = kinetic(gtildeup,gtildedn,l.Ns,l.Tmatrix)
